@@ -2,783 +2,596 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>RiverBank Big Sauna Temperature</title>
-
-  <!-- Mobile responsiveness -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>RiverBank Big Sauna Temperature</title>
 
-  <!-- Annotation plugin -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.1.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
 
-  <!-- Date adapter -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #fff;
+    }
+
+    .logo {
+      text-align: center;
+      margin: 15px 0 5px;
+    }
+
+    .logo img {
+      max-width: 300px;
+      width: 80%;
+      height: auto;
+    }
+
+    h2 {
+      text-align: center;
+      margin: 10px 0 20px;
+      font-size: 22px;
+    }
+
+    .chart-container {
+      position: relative;
+      width: 92%;
+      height: 400px;
+      margin: 0 auto;
+    }
+
+    .status {
+      text-align: center;
+      margin: 10px 0;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .disclaimer {
+      width: 90%;
+      margin: 15px auto;
+      text-align: center;
+      font-size: 9px;
+      color: #666;
+    }
+
+    @media (max-width: 600px) {
+      .chart-container {
+        width: 96%;
+        height: 350px;
+      }
+
+      h2 {
+        font-size: 19px;
+      }
+    }
+  </style>
 </head>
 
 <body>
 
-<div style="text-align:center; margin-top: 10px;">
-  <img
-    src="https://cdn.prod.website-files.com/67a69bcd8ea1d3e93de21362/67a6f173e5784778a1161401_palmerstown-mills-logo-horizontal.svg"
-    alt="Riverbank Sauna Logo"
-    style="max-width: 300px; height: auto;"
-  >
-</div>
+  <div class="logo">
+    <img
+      src="https://cdn.prod.website-files.com/67a69bcd8ea1d3e93de21362/67a6f173e5784778a1161401_palmerstown-mills-logo-horizontal.svg"
+      alt="Riverbank Sauna Logo"
+    >
+  </div>
 
-<h2 style="text-align:center;">Big Sauna Temperature</h2>
+  <h2>Big Sauna Temperature</h2>
 
-<div style="width: 90%; height: 400px; margin: auto;">
-  <canvas id="myChart"></canvas>
-</div>
+  <div class="chart-container">
+    <canvas id="temperatureChart"></canvas>
+  </div>
 
-<div style="width: 90%; margin: auto; text-align: center; margin-top: 10px;">
+  <div id="status" class="status">
+    Loading temperature data...
+  </div>
 
-  <p id="lastUpdated" style="margin-top:5px; font-size: 14px;"></p>
+  <div class="disclaimer">
+    <p>
+      <i>
+        Data shown is for informational purposes only and may not be
+        accurate or up to date.
+      </i>
+    </p>
 
-  <p style="font-size: 9px;"><i>
-    Data shown is for informational purposes only and may not be accurate or up to date.
-    Always assess conditions before working in or around water.
-  </i></p>
+    <p>
+      <i>
+        Data is provided in good faith but should not be relied upon
+        as the sole source of information.
+      </i>
+    </p>
+  </div>
 
-  <p style="font-size: 9px;"><i>
-    This webpage is not affiliated with any third parties, including national bodies or government departments.
-  </i></p>
-
-  <p style="font-size: 9px;"><i>
-    Data is provided in good faith but should not be relied upon as the sole source of information.
-    The provider accepts no responsibility for any loss or injury arising from its use.
-  </i></p>
-
-</div>
 
 <script>
 
-const channelID = 3516759;
+  // ============================================================
+  // CONFIGURATION
+  // ============================================================
 
-// ThingSpeak fields
-const fieldNumber1 = 1;
-const fieldNumber2 = 2;
+  const channelID = 3516759;
+  const readAPIKey = "6J2896HIFUXK1WIN";
 
-const resultsCount = 5000;
-const refreshInterval = 300000;
+  const field1 = 1;
+  const field2 = 2;
 
-const readAPIKey = "6J2896HIFUXK1WIN";
+  // Number of ThingSpeak records to request
+  const results = 5000;
 
-// Request the whole channel so both fields are available
-const url =
-  `https://api.thingspeak.com/channels/${channelID}/feeds.json?api_key=${readAPIKey}&results=${resultsCount}`;
+  // Refresh every 5 minutes
+  const refreshInterval = 5 * 60 * 1000;
 
-let chart;
-
-// Register annotation plugin
-Chart.register(window['chartjs-plugin-annotation']);
+  // Show the last 20 days
+  const daysToShow = 20;
 
 
-// ============================================================
-// FETCH DATA
-// ============================================================
+  // ============================================================
+  // CHART
+  // ============================================================
 
-async function fetchData() {
+  let temperatureChart = null;
 
-  try {
 
-    document.getElementById('lastUpdated').innerText =
-      "Loading latest data...";
+  // ============================================================
+  // GET DATA
+  // ============================================================
 
-    const response = await fetch(url);
+  async function loadData() {
 
-    if (!response.ok) {
-      throw new Error(`HTTP error: ${response.status}`);
+    const status =
+      document.getElementById("status");
+
+    status.textContent =
+      "Loading temperature data...";
+
+
+    const url =
+      `https://api.thingspeak.com/channels/${channelID}/feeds.json` +
+      `?api_key=${readAPIKey}` +
+      `&results=${results}`;
+
+
+    try {
+
+      const response =
+        await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+
+      const data =
+        await response.json();
+
+
+      if (!data.feeds || data.feeds.length === 0) {
+
+        status.textContent =
+          "No temperature data available.";
+
+        return;
+      }
+
+
+      // --------------------------------------------------------
+      // Convert ThingSpeak data
+      // --------------------------------------------------------
+
+      const readings =
+        data.feeds
+          .map(entry => {
+
+            const date =
+              new Date(entry.created_at);
+
+
+            const value1 =
+              entry[`field${field1}`];
+
+            const value2 =
+              entry[`field${field2}`];
+
+
+            return {
+
+              date,
+
+              temperature1:
+                value1 === null ||
+                value1 === undefined ||
+                value1 === ""
+                  ? null
+                  : Number(value1),
+
+              temperature2:
+                value2 === null ||
+                value2 === undefined ||
+                value2 === ""
+                  ? null
+                  : Number(value2)
+
+            };
+
+          })
+
+
+          // Remove invalid dates
+
+          .filter(reading =>
+            !isNaN(reading.date.getTime())
+          )
+
+
+          // Sort oldest → newest
+
+          .sort((a, b) =>
+            a.date - b.date
+          );
+
+
+      // --------------------------------------------------------
+      // Only show the last X days
+      // --------------------------------------------------------
+
+      const cutoff =
+        new Date();
+
+      cutoff.setDate(
+        cutoff.getDate() - daysToShow
+      );
+
+
+      const recentReadings =
+        readings.filter(reading =>
+          reading.date >= cutoff
+        );
+
+
+      // --------------------------------------------------------
+      // Field 1
+      // --------------------------------------------------------
+
+      const data1 =
+        recentReadings
+          .filter(reading =>
+            reading.temperature1 !== null &&
+            !isNaN(reading.temperature1)
+          )
+          .map(reading => ({
+            x: reading.date,
+            y: reading.temperature1
+          }));
+
+
+      // --------------------------------------------------------
+      // Field 2
+      // --------------------------------------------------------
+
+      const data2 =
+        recentReadings
+          .filter(reading =>
+            reading.temperature2 !== null &&
+            !isNaN(reading.temperature2)
+          )
+          .map(reading => ({
+            x: reading.date,
+            y: reading.temperature2
+          }));
+
+
+      // --------------------------------------------------------
+      // Update chart
+      // --------------------------------------------------------
+
+      updateChart(data1, data2);
+
+
+      // --------------------------------------------------------
+      // Status
+      // --------------------------------------------------------
+
+      const latestReading =
+        readings[readings.length - 1];
+
+
+      if (latestReading) {
+
+        const time =
+          latestReading.date.toLocaleString(
+            [],
+            {
+              dateStyle: "short",
+              timeStyle: "short"
+            }
+          );
+
+
+        status.textContent =
+          `Last data received: ${time}`;
+      }
+
     }
 
-    const data = await response.json();
+    catch (error) {
 
-    if (!data.feeds || data.feeds.length === 0) {
+      console.error(
+        "Unable to load ThingSpeak data:",
+        error
+      );
 
-      document.getElementById('lastUpdated').innerText =
-        "No data available.";
+
+      status.textContent =
+        "Unable to load temperature data.";
+
+    }
+
+  }
+
+
+  // ============================================================
+  // CREATE CHART
+  // ============================================================
+
+  function createChart(data1, data2) {
+
+    const canvas =
+      document.getElementById(
+        "temperatureChart"
+      );
+
+
+    const ctx =
+      canvas.getContext("2d");
+
+
+    temperatureChart =
+      new Chart(ctx, {
+
+        type: "line",
+
+
+        data: {
+
+          datasets: [
+
+            {
+              label: "Big Sauna",
+
+              data: data1,
+
+              borderColor: "blue",
+
+              borderWidth: 2,
+
+              backgroundColor: "transparent",
+
+              pointRadius: 0,
+
+              pointHoverRadius: 5,
+
+              tension: 0.15,
+
+              fill: false
+            },
+
+
+            {
+              label: "Second Temperature",
+
+              data: data2,
+
+              borderColor: "red",
+
+              borderWidth: 2,
+
+              backgroundColor: "transparent",
+
+              pointRadius: 0,
+
+              pointHoverRadius: 5,
+
+              tension: 0.15,
+
+              fill: false
+            }
+
+          ]
+
+        },
+
+
+        options: {
+
+          responsive: true,
+
+          maintainAspectRatio: false,
+
+          animation: false,
+
+
+          interaction: {
+
+            mode: "nearest",
+
+            intersect: false
+
+          },
+
+
+          scales: {
+
+            x: {
+
+              type: "time",
+
+              time: {
+
+                unit: "day",
+
+                tooltipFormat:
+                  "dd/MM/yyyy HH:mm",
+
+                displayFormats: {
+
+                  day: "dd MMM"
+
+                }
+
+              },
+
+              title: {
+
+                display: true,
+
+                text: "Date"
+
+              },
+
+              ticks: {
+
+                maxTicksLimit: 7
+
+              }
+
+            },
+
+
+            y: {
+
+              title: {
+
+                display: true,
+
+                text: "Temperature (°C)"
+
+              },
+
+              ticks: {
+
+                callback: function(value) {
+
+                  return value + " °C";
+
+                }
+
+              }
+
+            }
+
+          },
+
+
+          plugins: {
+
+            legend: {
+
+              display: true,
+
+              position: "top"
+
+            },
+
+
+            tooltip: {
+
+              enabled: true,
+
+              callbacks: {
+
+                label: function(context) {
+
+                  return (
+                    context.dataset.label +
+                    ": " +
+                    context.parsed.y +
+                    " °C"
+                  );
+
+                }
+
+              }
+
+            }
+
+          }
+
+        }
+
+      });
+
+  }
+
+
+  // ============================================================
+  // UPDATE CHART
+  // ============================================================
+
+  function updateChart(data1, data2) {
+
+    if (!temperatureChart) {
+
+      createChart(
+        data1,
+        data2
+      );
 
       return;
     }
 
 
-    // --------------------------------------------------------
-    // Convert ThingSpeak data
-    // --------------------------------------------------------
-
-    const filtered = data.feeds
-      .map(entry => ({
-
-        date: new Date(entry.created_at),
-
-        temperature1:
-          Number(entry[`field${fieldNumber1}`]),
-
-        temperature2:
-          Number(entry[`field${fieldNumber2}`])
-
-      }))
-      .filter(entry => !isNaN(entry.date.getTime()));
+    temperatureChart.data.datasets[0].data =
+      data1;
 
 
-    // --------------------------------------------------------
-    // Find latest reading for Field 1
-    // --------------------------------------------------------
-
-    const latestField1 = filtered
-      .filter(entry => !isNaN(entry.temperature1))
-      .sort((a, b) => b.date - a.date)[0];
+    temperatureChart.data.datasets[1].data =
+      data2;
 
 
-    // --------------------------------------------------------
-    // Find latest reading for Field 2
-    // --------------------------------------------------------
-
-    const latestField2 = filtered
-      .filter(entry => !isNaN(entry.temperature2))
-      .sort((a, b) => b.date - a.date)[0];
+    // Recalculate the rolling 20-day window
+    const now =
+      new Date();
 
 
-    // --------------------------------------------------------
-    // Display latest readings
-    // --------------------------------------------------------
+    const minDate =
+      new Date(now);
 
-    if (latestField1 || latestField2) {
-
-      const latestDate =
-        latestField1 && latestField2
-          ? new Date(
-              Math.max(
-                latestField1.date.getTime(),
-                latestField2.date.getTime()
-              )
-            )
-          : latestField1
-            ? latestField1.date
-            : latestField2.date;
-
-
-      const dateStr =
-        latestDate.toLocaleDateString();
-
-      const timeStr =
-        latestDate.toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-
-
-      const now = new Date();
-
-      const diffMinutes =
-        Math.max(
-          0,
-          Math.floor(
-            (now - latestDate) / 60000
-          )
-        );
-
-
-      const temperature1 =
-        latestField1
-          ? `${latestField1.temperature1} °C`
-          : "No data";
-
-
-      const temperature2 =
-        latestField2
-          ? `${latestField2.temperature2} °C`
-          : "No data";
-
-
-      document.getElementById('lastUpdated').innerHTML =
-
-        `<span style="
-          font-size:15px;
-          font-weight:bold;
-          line-height:1.6;
-        ">
-          Big Sauna: ${temperature1}<br>
-          Second Temperature: ${temperature2}<br>
-          Last updated at ${timeStr} on ${dateStr}
-          (${diffMinutes} mins ago)
-        </span>`;
-    }
-
-
-    // --------------------------------------------------------
-    // Filter for last 20 days
-    // --------------------------------------------------------
-
-    const cutoffDate = new Date();
-
-    cutoffDate.setDate(
-      cutoffDate.getDate() - 20
+    minDate.setDate(
+      minDate.getDate() - daysToShow
     );
 
 
-    // --------------------------------------------------------
-    // Field 1 data
-    // --------------------------------------------------------
-
-    const values1 = filtered
-
-      .filter(entry =>
-        entry.date >= cutoffDate &&
-        !isNaN(entry.temperature1)
-      )
-
-      .map(entry => ({
-
-        x: entry.date,
-
-        y: entry.temperature1
-
-      }));
+    temperatureChart.options.scales.x.min =
+      minDate;
 
 
-    // --------------------------------------------------------
-    // Field 2 data
-    // --------------------------------------------------------
-
-    const values2 = filtered
-
-      .filter(entry =>
-        entry.date >= cutoffDate &&
-        !isNaN(entry.temperature2)
-      )
-
-      .map(entry => ({
-
-        x: entry.date,
-
-        y: entry.temperature2
-
-      }));
+    temperatureChart.options.scales.x.max =
+      now;
 
 
-    // --------------------------------------------------------
-    // Update chart
-    // --------------------------------------------------------
-
-    updateChart(values1, values2);
+    temperatureChart.update("none");
 
   }
 
-  catch (error) {
 
-    console.error(
-      "Error fetching data:",
-      error
-    );
+  // ============================================================
+  // INITIAL LOAD
+  // ============================================================
 
-    document.getElementById('lastUpdated').innerText =
-      "⚠ Unable to load data right now.";
-
-  }
-
-}
+  loadData();
 
 
-// ============================================================
-// CREATE CHART
-// ============================================================
+  // ============================================================
+  // AUTOMATIC REFRESH
+  // ============================================================
 
-function createChart(values1, values2) {
-
-  const ctx =
-    document
-      .getElementById('myChart')
-      .getContext('2d');
-
-
-  // Current date
-  const now = new Date();
-
-
-  // Chart starts 20 days ago
-  const minDate = new Date();
-
-  minDate.setDate(
-    now.getDate() - 20
+  setInterval(
+    loadData,
+    refreshInterval
   );
-
-
-  // Chart ends tomorrow
-  const maxDate = new Date();
-
-  maxDate.setDate(
-    now.getDate() + 1
-  );
-
-
-  chart = new Chart(ctx, {
-
-    type: 'line',
-
-    data: {
-
-      datasets: [
-
-        // ====================================================
-        // FIELD 1
-        // ====================================================
-
-        {
-
-          label: 'Big Sauna',
-
-          data: values1,
-
-          borderColor: 'blue',
-
-          borderWidth: 2,
-
-          fill: false,
-
-          tension: 0.2,
-
-          parsing: false,
-
-          pointRadius: ctx =>
-
-            ctx.dataIndex ===
-            ctx.dataset.data.length - 1
-
-              ? 5
-
-              : 0
-
-        },
-
-
-        // ====================================================
-        // FIELD 2
-        // ====================================================
-
-        {
-
-          label: 'Second Temperature',
-
-          data: values2,
-
-          borderColor: 'red',
-
-          borderWidth: 2,
-
-          fill: false,
-
-          tension: 0.2,
-
-          parsing: false,
-
-          pointRadius: ctx =>
-
-            ctx.dataIndex ===
-            ctx.dataset.data.length - 1
-
-              ? 5
-
-              : 0
-
-        }
-
-      ]
-
-    },
-
-
-    // ========================================================
-    // CHART OPTIONS
-    // ========================================================
-
-    options: {
-
-      responsive: true,
-
-      maintainAspectRatio: false,
-
-      animation: false,
-
-
-      // ------------------------------------------------------
-      // SCALES
-      // ------------------------------------------------------
-
-      scales: {
-
-        x: {
-
-          type: 'time',
-
-          time: {
-
-            unit: 'day',
-
-            displayFormats: {
-
-              day: 'MMM dd'
-
-            }
-
-          },
-
-          min: minDate,
-
-          max: maxDate,
-
-
-          title: {
-
-            display: true,
-
-            text: 'Date',
-
-            font: {
-
-              size: 14,
-
-              weight: 'bold'
-
-            }
-
-          },
-
-
-          ticks: {
-
-            autoSkip: true,
-
-            maxTicksLimit: 6
-
-          }
-
-        },
-
-
-        y: {
-
-          min: 0,
-
-          max: 120,
-
-
-          title: {
-
-            display: true,
-
-            text: 'Temperature (°C)',
-
-            font: {
-
-              size: 14,
-
-              weight: 'bold'
-
-            }
-
-          },
-
-
-          ticks: {
-
-            stepSize: 10,
-
-            callback: value =>
-              value + ' °C'
-
-          }
-
-        }
-
-      },
-
-
-      // ------------------------------------------------------
-      // PLUGINS
-      // ------------------------------------------------------
-
-      plugins: {
-
-
-        // ====================================================
-        // LEGEND
-        // ====================================================
-
-        legend: {
-
-          display: true,
-
-          position: 'top',
-
-          labels: {
-
-            usePointStyle: true,
-
-            padding: 15
-
-          }
-
-        },
-
-
-        // ====================================================
-        // ANNOTATIONS
-        // ====================================================
-
-        annotation: {
-
-          annotations: {
-
-
-            // ------------------------------------------------
-            // 80°C
-            // ------------------------------------------------
-
-            thresholdLine1: {
-
-              type: 'line',
-
-              yMin: 80,
-
-              yMax: 80,
-
-              borderColor: '#89CFF0',
-
-              borderWidth: 2,
-
-
-              label: {
-
-                display: true,
-
-                content: 'Minimum',
-
-                position: 'start',
-
-                backgroundColor:
-                  'rgba(255,255,255,0.7)',
-
-                color: 'black'
-
-              }
-
-            },
-
-
-            // ------------------------------------------------
-            // 90°C
-            // ------------------------------------------------
-
-            thresholdLine2: {
-
-              type: 'line',
-
-              yMin: 90,
-
-              yMax: 90,
-
-              borderColor: 'orange',
-
-              borderWidth: 2,
-
-
-              label: {
-
-                display: true,
-
-                content: 'Optimum',
-
-                position: 'start',
-
-                backgroundColor:
-                  'rgba(255,255,255,0.7)',
-
-                color: 'black'
-
-              }
-
-            },
-
-
-            // ------------------------------------------------
-            // 100°C
-            // ------------------------------------------------
-
-            thresholdLine3: {
-
-              type: 'line',
-
-              yMin: 100,
-
-              yMax: 100,
-
-              borderColor: 'red',
-
-              borderWidth: 2,
-
-
-              label: {
-
-                display: true,
-
-                content: 'Maximum',
-
-                position: 'start',
-
-                backgroundColor:
-                  'rgba(255,255,255,0.7)',
-
-                color: 'black'
-
-              }
-
-            }
-
-          }
-
-        },
-
-
-        // ====================================================
-        // TOOLTIP
-        // ====================================================
-
-        tooltip: {
-
-          enabled: true,
-
-          mode: 'nearest',
-
-          intersect: true,
-
-          displayColors: true,
-
-          backgroundColor:
-            'rgba(0,0,0,0.75)',
-
-          titleFont: {
-
-            size: 14,
-
-            weight: 'bold'
-
-          },
-
-          bodyFont: {
-
-            size: 14,
-
-            weight: 'bold'
-
-          },
-
-          padding: 10,
-
-          cornerRadius: 6,
-
-
-          callbacks: {
-
-            title: () => '',
-
-
-            label: function(context) {
-
-              const date =
-                new Date(context.parsed.x);
-
-
-              const dateStr =
-                date.toLocaleDateString();
-
-
-              const timeStr =
-                date.toLocaleTimeString([], {
-
-                  hour: '2-digit',
-
-                  minute: '2-digit'
-
-                });
-
-
-              const temperature =
-                context.parsed.y;
-
-
-              return [
-
-                `${dateStr} ${timeStr}`,
-
-                `${context.dataset.label}: ${temperature} °C`
-
-              ];
-
-            }
-
-          }
-
-        }
-
-      }
-
-    }
-
-  });
-
-}
-
-
-// ============================================================
-// UPDATE CHART
-// ============================================================
-
-function updateChart(values1, values2) {
-
-  if (!chart) {
-
-    createChart(
-      values1,
-      values2
-    );
-
-  }
-
-  else {
-
-    chart.data.datasets[0].data =
-      values1;
-
-    chart.data.datasets[1].data =
-      values2;
-
-    chart.update();
-
-  }
-
-}
-
-
-// ============================================================
-// INITIAL LOAD
-// ============================================================
-
-fetchData();
-
-
-// ============================================================
-// AUTO REFRESH
-// ============================================================
-
-// Refresh every 5 minutes
-
-setInterval(
-  fetchData,
-  refreshInterval
-);
 
 </script>
 
