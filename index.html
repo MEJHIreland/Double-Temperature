@@ -72,12 +72,12 @@
 
   <div class="logo">
     <img
-      src="https://cdn.prod.website-files.com/67a69bcd8ea1d3e93de21362/67a6f173e5784778a1161401_palmerstown-mills-logo-horizontal.svg"
-      alt="Riverbank Sauna Logo"
+      src="https://www.canoecentre.ie/cdn/shop/files/canoe-centre-logo-paddle-spiral.png?v=1770888211&width=300"
+      alt="Canoe Centre Logo"
     >
   </div>
 
-  <h2>Big Sauna Temperature</h2>
+  <h2>River and Air Temperature @ Canoe Centre</h2>
 
   <div class="chart-container">
     <canvas id="temperatureChart"></canvas>
@@ -359,7 +359,7 @@
           datasets: [
 
             {
-              label: "Big Sauna",
+              label: "River Temperature",
 
               data: data1,
 
@@ -380,7 +380,7 @@
 
 
             {
-              label: "Second Temperature",
+              label: "Air Temperature",
 
               data: data2,
 
@@ -461,7 +461,7 @@
 
 
             y: {
-
+            min: 0,
               title: {
 
                 display: true,
