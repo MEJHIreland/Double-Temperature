@@ -33,94 +33,25 @@
       font-size: 22px;
     }
 
-    /* ---------- Range slider (two handles) ---------- */
-
     .controls {
       width: 92%;
       max-width: 500px;
       margin: 0 auto 15px;
-      text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .controls input[type="range"] {
+      flex: 1;
     }
 
     #rangeLabel {
       font-size: 14px;
+      min-width: 60px;
+      text-align: right;
       color: #333;
-      margin-bottom: 6px;
     }
-
-    .range-wrap {
-      position: relative;
-      height: 30px;
-    }
-
-    .range-track,
-    .range-fill {
-      position: absolute;
-      top: 50%;
-      height: 4px;
-      transform: translateY(-50%);
-      border-radius: 2px;
-    }
-
-    .range-track {
-      left: 0;
-      right: 0;
-      background: #ddd;
-    }
-
-    .range-fill {
-      background: #1a6fc9;
-    }
-
-    .range-wrap input[type="range"] {
-      position: absolute;
-      left: 0;
-      top: 50%;
-      width: 100%;
-      height: 30px;
-      margin: 0;
-      transform: translateY(-50%);
-      background: transparent;
-      pointer-events: none;           /* only the thumbs are clickable */
-      -webkit-appearance: none;
-      appearance: none;
-    }
-
-    .range-wrap input[type="range"]::-webkit-slider-runnable-track {
-      background: transparent;
-      height: 30px;
-    }
-
-    .range-wrap input[type="range"]::-moz-range-track {
-      background: transparent;
-      height: 30px;
-    }
-
-    .range-wrap input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      pointer-events: auto;
-      width: 18px;
-      height: 18px;
-      margin-top: 6px;
-      border-radius: 50%;
-      background: #1a6fc9;
-      border: 2px solid #fff;
-      box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
-      cursor: pointer;
-    }
-
-    .range-wrap input[type="range"]::-moz-range-thumb {
-      pointer-events: auto;
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: #1a6fc9;
-      border: 2px solid #fff;
-      box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
-      cursor: pointer;
-    }
-
-    /* ---------- Chart ---------- */
 
     .chart-container {
       position: relative;
@@ -169,31 +100,16 @@
   <h2>River and Air Temperature @ Canoe Centre</h2>
 
   <div class="controls">
-    <div id="rangeLabel">20 days ago → now</div>
-
-    <div class="range-wrap">
-      <div class="range-track"></div>
-      <div class="range-fill" id="rangeFill"></div>
-
-      <input
-        type="range"
-        id="startSlider"
-        min="0"
-        max="20"
-        step="0.25"
-        value="0"
-        aria-label="Start of the period shown"
-      >
-      <input
-        type="range"
-        id="endSlider"
-        min="0"
-        max="20"
-        step="0.25"
-        value="20"
-        aria-label="End of the period shown"
-      >
-    </div>
+    <input
+      type="range"
+      id="daysSlider"
+      min="1"
+      max="20"
+      step="1"
+      value="20"
+      aria-label="Number of days to show"
+    >
+    <span id="rangeLabel">20 days</span>
   </div>
 
   <div class="chart-container">
@@ -239,14 +155,9 @@
   // Refresh every 5 minutes
   const refreshInterval = 5 * 60 * 1000;
 
-  // Total history the slider covers (days)
+  // Default and maximum window (days)
   const maxDays = 20;
-
-  // Smallest window the handles can be squeezed to (days).
-  // 0.25 = 6 hours. Use 1 for a one-day minimum.
-  const minGap = 0.25;
-
-  const DAY_MS = 24 * 60 * 60 * 1000;
+  let daysToShow = 20;
 
 
   // ============================================================
@@ -256,15 +167,8 @@
   let temperatureChart = null;
   let allReadings = [];       // everything fetched, oldest -> newest
 
-  // Slider positions are "days from the start of the 20-day window":
-  //   0  = 20 days ago      20 = now
-  let rangeStart = 0;
-  let rangeEnd = maxDays;
-
-  const startSlider = document.getElementById("startSlider");
-  const endSlider = document.getElementById("endSlider");
+  const slider = document.getElementById("daysSlider");
   const rangeLabel = document.getElementById("rangeLabel");
-  const rangeFill = document.getElementById("rangeFill");
 
 
   // ============================================================
@@ -346,28 +250,20 @@
 
   function renderChart() {
 
-    const now = Date.now();
+    const now = new Date();
 
-    // Convert slider positions to real dates
-    const windowStart = new Date(now - (maxDays - rangeStart) * DAY_MS);
-    const windowEnd = new Date(now - (maxDays - rangeEnd) * DAY_MS);
+    const cutoff = new Date(now);
+    cutoff.setTime(now.getTime() - daysToShow * 24 * 60 * 60 * 1000);
 
     const recent =
-      allReadings.filter(reading =>
-        reading.date >= windowStart && reading.date <= windowEnd
-      );
+      allReadings.filter(reading => reading.date >= cutoff);
 
     const build = key =>
       recent
         .filter(r => r[key] !== null && !isNaN(r[key]))
         .map(r => ({ x: r.date, y: r[key] }));
 
-    updateChart(
-      build("temperature1"),
-      build("temperature2"),
-      windowStart,
-      windowEnd
-    );
+    updateChart(build("temperature1"), build("temperature2"), cutoff, now);
 
   }
 
@@ -505,12 +401,12 @@
 
     const xScale = temperatureChart.options.scales.x;
 
+    // Fixed rolling window ending now
     xScale.min = minDate;
     xScale.max = maxDate;
 
     // Hourly ticks for short windows, daily for long ones
-    const windowDays = (maxDate - minDate) / DAY_MS;
-    xScale.time.unit = windowDays <= 2 ? "hour" : "day";
+    xScale.time.unit = daysToShow <= 2 ? "hour" : "day";
 
     temperatureChart.update("none");
 
@@ -518,62 +414,36 @@
 
 
   // ============================================================
-  // RANGE SLIDER
+  // SLIDER
   // ============================================================
 
-  // 5 -> "5 days", 0.25 -> "6 hours", 1.5 -> "1 day 12 hours"
-  function formatDuration(days) {
+  function setDays(days) {
 
-    const totalHours = Math.round(days * 24);
-    const d = Math.floor(totalHours / 24);
-    const h = totalHours % 24;
+    daysToShow = Math.min(maxDays, Math.max(1, Number(days)));
 
-    const parts = [];
+    rangeLabel.textContent =
+      daysToShow === 1 ? "1 day" : `${daysToShow} days`;
 
-    if (d > 0) parts.push(d + (d === 1 ? " day" : " days"));
-    if (h > 0) parts.push(h + (h === 1 ? " hour" : " hours"));
-
-    return parts.join(" ");
+    if (allReadings.length > 0) {
+      renderChart();
+    }
 
   }
 
-  function updateSliderUI() {
+  slider.addEventListener("input", () => setDays(slider.value));
 
-    // Label, e.g. "12 days ago → 11 days ago"
-    const startAgo = maxDays - rangeStart;
-    const endAgo = maxDays - rangeEnd;
 
-    const startText = formatDuration(startAgo) + " ago";
-    const endText = endAgo === 0 ? "now" : formatDuration(endAgo) + " ago";
+  // ============================================================
+  // INITIAL LOAD + AUTOMATIC REFRESH
+  // ============================================================
 
-    rangeLabel.textContent = `${startText} → ${endText}`;
+  setDays(daysToShow);
 
-    // Blue bar between the two handles
-    // (small px offset keeps the bar centred under the thumbs)
-    const p1 = (rangeStart / maxDays) * 100;
-    const p2 = (rangeEnd / maxDays) * 100;
+  loadData();
 
-    rangeFill.style.left =
-      `calc(${p1}% + ${(0.5 - p1 / 100) * 18}px)`;
+  setInterval(loadData, refreshInterval);
 
-    rangeFill.style.width =
-      `calc(${p2 - p1}% + ${((p1 - p2) / 100) * 18}px)`;
+</script>
 
-  }
-
-  function onSliderInput(changed) {
-
-    let s = Number(startSlider.value);
-    let e = Number(endSlider.value);
-
-    // Keep the handles from crossing each other
-    if (changed === "start" && s > e - minGap) {
-      s = e - minGap;
-    }
-
-    if (changed === "end" && e < s + minGap) {
-      e = s + minGap;
-    }
-
-    s = Math.max(0, s);
-    e = Math.min(maxDays, e);
+</body>
+</html>
