@@ -33,6 +33,51 @@
       font-size: 22px;
     }
 
+    .controls {
+      width: 92%;
+      max-width: 700px;
+      margin: 0 auto 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .controls button {
+      padding: 8px 14px;
+      font-size: 14px;
+      border: 1px solid #1a6fc9;
+      background: #fff;
+      color: #1a6fc9;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .controls button.active {
+      background: #1a6fc9;
+      color: #fff;
+    }
+
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1 1 220px;
+      min-width: 200px;
+    }
+
+    .slider-group input[type="range"] {
+      flex: 1;
+    }
+
+    #rangeLabel {
+      font-size: 14px;
+      min-width: 60px;
+      text-align: right;
+      color: #333;
+    }
+
     .chart-container {
       position: relative;
       width: 92%;
@@ -79,6 +124,24 @@
 
   <h2>River and Air Temperature @ Canoe Centre</h2>
 
+  <div class="controls">
+    <button id="btn1" type="button">1 day</button>
+    <button id="btn20" type="button">20 days</button>
+
+    <div class="slider-group">
+      <input
+        type="range"
+        id="daysSlider"
+        min="1"
+        max="20"
+        step="1"
+        value="20"
+        aria-label="Number of days to show"
+      >
+      <span id="rangeLabel">20 days</span>
+    </div>
+  </div>
+
   <div class="chart-container">
     <canvas id="temperatureChart"></canvas>
   </div>
@@ -122,212 +185,117 @@
   // Refresh every 5 minutes
   const refreshInterval = 5 * 60 * 1000;
 
-  // Show the last 20 days
-  const daysToShow = 20;
+  // Default and maximum window (days)
+  const maxDays = 20;
+  let daysToShow = 20;
 
 
   // ============================================================
-  // CHART
+  // STATE
   // ============================================================
 
   let temperatureChart = null;
+  let allReadings = [];       // everything fetched, oldest -> newest
+
+  const slider = document.getElementById("daysSlider");
+  const rangeLabel = document.getElementById("rangeLabel");
+  const btn1 = document.getElementById("btn1");
+  const btn20 = document.getElementById("btn20");
 
 
   // ============================================================
-  // GET DATA
+  // GET DATA (network)
   // ============================================================
 
   async function loadData() {
 
-    const status =
-      document.getElementById("status");
+    const status = document.getElementById("status");
 
-    status.textContent =
-      "Loading temperature data...";
-
+    status.textContent = "Loading temperature data...";
 
     const url =
       `https://api.thingspeak.com/channels/${channelID}/feeds.json` +
       `?api_key=${readAPIKey}` +
       `&results=${results}`;
 
-
     try {
 
-      const response =
-        await fetch(url);
+      const response = await fetch(url);
 
       if (!response.ok) {
-        throw new Error(
-          `HTTP ${response.status}`
-        );
+        throw new Error(`HTTP ${response.status}`);
       }
 
-
-      const data =
-        await response.json();
-
+      const data = await response.json();
 
       if (!data.feeds || data.feeds.length === 0) {
-
-        status.textContent =
-          "No temperature data available.";
-
+        status.textContent = "No temperature data available.";
         return;
       }
 
+      const toNumber = value =>
+        value === null || value === undefined || value === ""
+          ? null
+          : Number(value);
 
-      // --------------------------------------------------------
-      // Convert ThingSpeak data
-      // --------------------------------------------------------
-
-      const readings =
+      allReadings =
         data.feeds
-          .map(entry => {
+          .map(entry => ({
+            date: new Date(entry.created_at),
+            temperature1: toNumber(entry[`field${field1}`]),
+            temperature2: toNumber(entry[`field${field2}`])
+          }))
+          .filter(reading => !isNaN(reading.date.getTime()))
+          .sort((a, b) => a.date - b.date);
 
-            const date =
-              new Date(entry.created_at);
+      renderChart();
 
-
-            const value1 =
-              entry[`field${field1}`];
-
-            const value2 =
-              entry[`field${field2}`];
-
-
-            return {
-
-              date,
-
-              temperature1:
-                value1 === null ||
-                value1 === undefined ||
-                value1 === ""
-                  ? null
-                  : Number(value1),
-
-              temperature2:
-                value2 === null ||
-                value2 === undefined ||
-                value2 === ""
-                  ? null
-                  : Number(value2)
-
-            };
-
-          })
-
-
-          // Remove invalid dates
-
-          .filter(reading =>
-            !isNaN(reading.date.getTime())
-          )
-
-
-          // Sort oldest → newest
-
-          .sort((a, b) =>
-            a.date - b.date
-          );
-
-
-      // --------------------------------------------------------
-      // Only show the last X days
-      // --------------------------------------------------------
-
-      const cutoff =
-        new Date();
-
-      cutoff.setDate(
-        cutoff.getDate() - daysToShow
-      );
-
-
-      const recentReadings =
-        readings.filter(reading =>
-          reading.date >= cutoff
-        );
-
-
-      // --------------------------------------------------------
-      // Field 1
-      // --------------------------------------------------------
-
-      const data1 =
-        recentReadings
-          .filter(reading =>
-            reading.temperature1 !== null &&
-            !isNaN(reading.temperature1)
-          )
-          .map(reading => ({
-            x: reading.date,
-            y: reading.temperature1
-          }));
-
-
-      // --------------------------------------------------------
-      // Field 2
-      // --------------------------------------------------------
-
-      const data2 =
-        recentReadings
-          .filter(reading =>
-            reading.temperature2 !== null &&
-            !isNaN(reading.temperature2)
-          )
-          .map(reading => ({
-            x: reading.date,
-            y: reading.temperature2
-          }));
-
-
-      // --------------------------------------------------------
-      // Update chart
-      // --------------------------------------------------------
-
-      updateChart(data1, data2);
-
-
-      // --------------------------------------------------------
-      // Status
-      // --------------------------------------------------------
-
-      const latestReading =
-        readings[readings.length - 1];
-
+      const latestReading = allReadings[allReadings.length - 1];
 
       if (latestReading) {
 
         const time =
           latestReading.date.toLocaleString(
             [],
-            {
-              dateStyle: "short",
-              timeStyle: "short"
-            }
+            { dateStyle: "short", timeStyle: "short" }
           );
 
-
-        status.textContent =
-          `Last data received: ${time}`;
+        status.textContent = `Last data received: ${time}`;
       }
 
     }
 
     catch (error) {
 
-      console.error(
-        "Unable to load ThingSpeak data:",
-        error
-      );
+      console.error("Unable to load ThingSpeak data:", error);
 
-
-      status.textContent =
-        "Unable to load temperature data.";
+      status.textContent = "Unable to load temperature data.";
 
     }
+
+  }
+
+
+  // ============================================================
+  // RENDER (no network - used by refresh, slider and buttons)
+  // ============================================================
+
+  function renderChart() {
+
+    const now = new Date();
+
+    const cutoff = new Date(now);
+    cutoff.setTime(now.getTime() - daysToShow * 24 * 60 * 60 * 1000);
+
+    const recent =
+      allReadings.filter(reading => reading.date >= cutoff);
+
+    const build = key =>
+      recent
+        .filter(r => r[key] !== null && !isNaN(r[key]))
+        .map(r => ({ x: r.date, y: r[key] }));
+
+    updateChart(build("temperature1"), build("temperature2"), cutoff, now);
 
   }
 
@@ -338,183 +306,107 @@
 
   function createChart(data1, data2) {
 
-    const canvas =
-      document.getElementById(
-        "temperatureChart"
-      );
-
-
     const ctx =
-      canvas.getContext("2d");
-
+      document.getElementById("temperatureChart").getContext("2d");
 
     temperatureChart =
       new Chart(ctx, {
 
         type: "line",
 
-
         data: {
-
           datasets: [
-
             {
               label: "River Temperature",
-
               data: data1,
-
               borderColor: "blue",
-
               borderWidth: 2,
-
               backgroundColor: "transparent",
-
               pointRadius: 0,
-
               pointHoverRadius: 5,
-
               tension: 0.15,
-
               fill: false
             },
-
-
             {
               label: "Air Temperature",
-
               data: data2,
-
               borderColor: "red",
-
               borderWidth: 2,
-
               backgroundColor: "transparent",
-
               pointRadius: 0,
-
               pointHoverRadius: 5,
-
               tension: 0.15,
-
               fill: false
             }
-
           ]
-
         },
-
 
         options: {
 
           responsive: true,
-
           maintainAspectRatio: false,
-
           animation: false,
 
-
           interaction: {
-
             mode: "nearest",
-
             intersect: false
-
           },
-
 
           scales: {
 
             x: {
-
               type: "time",
-
               time: {
-
                 unit: "day",
-
-                tooltipFormat:
-                  "dd/MM/yyyy HH:mm",
-
+                tooltipFormat: "dd/MM/yyyy HH:mm",
                 displayFormats: {
-
+                  hour: "HH:mm",
                   day: "dd MMM"
-
                 }
-
               },
-
               title: {
-
                 display: true,
-
                 text: "Date"
-
               },
-
               ticks: {
-
                 maxTicksLimit: 7
-
               }
-
             },
 
-
             y: {
-            min: 0,
+              min: 0,
               title: {
-
                 display: true,
-
                 text: "Temperature (°C)"
-
               },
-
               ticks: {
-
                 callback: function(value) {
-
                   return value + " °C";
-
                 }
-
               }
-
             }
 
           },
 
-
           plugins: {
 
             legend: {
-
               display: true,
-
               position: "top"
-
             },
 
-
             tooltip: {
-
               enabled: true,
-
               callbacks: {
-
                 label: function(context) {
-
                   return (
                     context.dataset.label +
                     ": " +
                     context.parsed.y +
                     " °C"
                   );
-
                 }
-
               }
-
             }
 
           }
@@ -530,47 +422,23 @@
   // UPDATE CHART
   // ============================================================
 
-  function updateChart(data1, data2) {
+  function updateChart(data1, data2, minDate, maxDate) {
 
     if (!temperatureChart) {
-
-      createChart(
-        data1,
-        data2
-      );
-
-      return;
+      createChart(data1, data2);
     }
 
+    temperatureChart.data.datasets[0].data = data1;
+    temperatureChart.data.datasets[1].data = data2;
 
-    temperatureChart.data.datasets[0].data =
-      data1;
+    const xScale = temperatureChart.options.scales.x;
 
+    // Fixed rolling window ending now
+    xScale.min = minDate;
+    xScale.max = maxDate;
 
-    temperatureChart.data.datasets[1].data =
-      data2;
-
-
-    // Recalculate the rolling 20-day window
-    const now =
-      new Date();
-
-
-    const minDate =
-      new Date(now);
-
-    minDate.setDate(
-      minDate.getDate() - daysToShow
-    );
-
-
-    temperatureChart.options.scales.x.min =
-      minDate;
-
-
-    temperatureChart.options.scales.x.max =
-      now;
-
+    // Hourly ticks for short windows, daily for long ones
+    xScale.time.unit = daysToShow <= 2 ? "hour" : "day";
 
     temperatureChart.update("none");
 
@@ -578,20 +446,41 @@
 
 
   // ============================================================
-  // INITIAL LOAD
+  // CONTROLS
   // ============================================================
+
+  function setDays(days) {
+
+    daysToShow = Math.min(maxDays, Math.max(1, Number(days)));
+
+    slider.value = daysToShow;
+
+    rangeLabel.textContent =
+      daysToShow === 1 ? "1 day" : `${daysToShow} days`;
+
+    btn1.classList.toggle("active", daysToShow === 1);
+    btn20.classList.toggle("active", daysToShow === maxDays);
+
+    if (allReadings.length > 0) {
+      renderChart();
+    }
+
+  }
+
+  slider.addEventListener("input", () => setDays(slider.value));
+  btn1.addEventListener("click", () => setDays(1));
+  btn20.addEventListener("click", () => setDays(maxDays));
+
+
+  // ============================================================
+  // INITIAL LOAD + AUTOMATIC REFRESH
+  // ============================================================
+
+  setDays(daysToShow);
 
   loadData();
 
-
-  // ============================================================
-  // AUTOMATIC REFRESH
-  // ============================================================
-
-  setInterval(
-    loadData,
-    refreshInterval
-  );
+  setInterval(loadData, refreshInterval);
 
 </script>
 
