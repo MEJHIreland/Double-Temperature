@@ -35,39 +35,14 @@
 
     .controls {
       width: 92%;
-      max-width: 700px;
+      max-width: 500px;
       margin: 0 auto 15px;
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 12px;
-      flex-wrap: wrap;
+      gap: 10px;
     }
 
-    .controls button {
-      padding: 8px 14px;
-      font-size: 14px;
-      border: 1px solid #1a6fc9;
-      background: #fff;
-      color: #1a6fc9;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-
-    .controls button.active {
-      background: #1a6fc9;
-      color: #fff;
-    }
-
-    .slider-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex: 1 1 220px;
-      min-width: 200px;
-    }
-
-    .slider-group input[type="range"] {
+    .controls input[type="range"] {
       flex: 1;
     }
 
@@ -125,21 +100,16 @@
   <h2>River and Air Temperature @ Canoe Centre</h2>
 
   <div class="controls">
-    <button id="btn1" type="button">1 day</button>
-    <button id="btn20" type="button">20 days</button>
-
-    <div class="slider-group">
-      <input
-        type="range"
-        id="daysSlider"
-        min="1"
-        max="20"
-        step="1"
-        value="20"
-        aria-label="Number of days to show"
-      >
-      <span id="rangeLabel">20 days</span>
-    </div>
+    <input
+      type="range"
+      id="daysSlider"
+      min="1"
+      max="20"
+      step="1"
+      value="20"
+      aria-label="Number of days to show"
+    >
+    <span id="rangeLabel">20 days</span>
   </div>
 
   <div class="chart-container">
@@ -199,8 +169,6 @@
 
   const slider = document.getElementById("daysSlider");
   const rangeLabel = document.getElementById("rangeLabel");
-  const btn1 = document.getElementById("btn1");
-  const btn20 = document.getElementById("btn20");
 
 
   // ============================================================
@@ -277,7 +245,7 @@
 
 
   // ============================================================
-  // RENDER (no network - used by refresh, slider and buttons)
+  // RENDER (no network - used by refresh and slider)
   // ============================================================
 
   function renderChart() {
@@ -446,20 +414,15 @@
 
 
   // ============================================================
-  // CONTROLS
+  // SLIDER
   // ============================================================
 
   function setDays(days) {
 
     daysToShow = Math.min(maxDays, Math.max(1, Number(days)));
 
-    slider.value = daysToShow;
-
     rangeLabel.textContent =
       daysToShow === 1 ? "1 day" : `${daysToShow} days`;
-
-    btn1.classList.toggle("active", daysToShow === 1);
-    btn20.classList.toggle("active", daysToShow === maxDays);
 
     if (allReadings.length > 0) {
       renderChart();
@@ -468,8 +431,6 @@
   }
 
   slider.addEventListener("input", () => setDays(slider.value));
-  btn1.addEventListener("click", () => setDays(1));
-  btn20.addEventListener("click", () => setDays(maxDays));
 
 
   // ============================================================
